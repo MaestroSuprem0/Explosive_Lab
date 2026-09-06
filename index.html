@@ -16,8 +16,26 @@
   :root{ --bg:#0b1020; --panel:#121a33; --borde:#22305c; --texto:#e8ecf8;
          --tenue:#8fa0c8; --acento:#4da3ff; --ok:#37d67a; --alerta:#ffb020; }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{background:var(--bg);color:var(--texto);font-family:system-ui,Segoe UI,sans-serif;overflow:hidden}
+  body{background:var(--bg);color:var(--texto);font-family:system-ui,Segoe UI,sans-serif;
+       overflow:hidden;touch-action:none;overscroll-behavior:none;
+       -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+  #girar{display:none}
   #app{display:flex;height:100vh;width:100vw}
+  @supports (height:100dvh){ #app{height:100dvh} }
+  /* Esta media query va DESPUÉS de la regla base de #app, no antes. Estaba
+     antes, y con la misma especificidad ganaba la última del archivo: en
+     vertical el cartel de "gira el dispositivo" se pintaba encima (es fixed y
+     z-index 99) pero #app seguía en display:flex. O sea que detrás del cartel
+     el juego seguía corriendo entero, con el canvas dimensionado a una
+     pantalla vertical y el bucle a 60 fps quemando batería. */
+  @media (orientation:portrait) and (max-width:950px){
+    #app{display:none}
+    #girar{display:flex;align-items:center;justify-content:center;
+           position:fixed;inset:0;text-align:center;padding:28px;z-index:99}
+    #girar .icono{font-size:52px;margin-bottom:14px}
+    #girar h2{font-size:20px;margin-bottom:8px}
+    #girar p{font-size:14px;color:var(--tenue);line-height:1.5}
+  }
   #escena{flex:1;position:relative;min-width:0;overflow:hidden}
 
   /* ── CAPAS, de atrás hacia adelante ──
@@ -26,9 +44,12 @@
      seguir leyéndose aunque el esqueleto pase por encima del vaso. */
   #video       {position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
                 transform:scaleX(-1);opacity:.32;display:none;z-index:1}
-  #mundo3d     {position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none}
-  #manos       {position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none}
-  #juego       {position:absolute;inset:0;width:100%;height:100%;cursor:crosshair;z-index:4}
+  /* Carbonito por DELANTE de las estaciones: antes quedaba tapado por la mesa.
+     Orden: video < juego 2D < mundo 3D < manos < globo. */
+  #juego       {z-index:2}
+  #mundo3d     {position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none}
+  #manos       {position:absolute;inset:0;width:100%;height:100%;z-index:4;pointer-events:none}
+  #juego       {position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
 
   #globo{position:absolute;z-index:5;max-width:290px;background:rgba(8,13,28,.94);
          border:1px solid var(--acento);border-radius:12px;padding:10px 13px;font-size:13px;
@@ -41,6 +62,16 @@
 
   #lateral{width:330px;background:var(--panel);border-left:1px solid var(--borde);
            display:flex;flex-direction:column;overflow:hidden}
+  /* Estas tres reglas van DESPUÉS de la de arriba y no antes, que es donde
+     estaban. Tienen la misma especificidad, así que ganaba la última del
+     archivo: el panel medía 330 px en todos los aparatos y el estrechado para
+     móvil no se aplicó nunca. En un teléfono apaisado de 667 px eso dejaba el
+     laboratorio en 337 px — la mitad de la pantalla para el panel de texto. */
+  @media (max-width:1000px){ #lateral{width:250px} }
+  @media (max-width:760px){  #lateral{width:210px} }
+  /* Por debajo de 700 px el panel pasa a 178: es el mínimo en el que la ficha
+     del elemento sigue leyéndose sin que las palabras se partan a la mitad. */
+  @media (max-width:700px){  #lateral{width:178px} }
   .cab{padding:14px 16px;border-bottom:1px solid var(--borde)}
   .cab h1{font-size:16px}
   .cab p{font-size:12px;color:var(--tenue);margin-top:3px}
@@ -90,6 +121,9 @@
   #estado{font-size:11.5px;color:var(--tenue);width:100%;line-height:1.45}
   #estado.err{color:#ff8f8f}
   #estado.ok{color:var(--ok)}
+  /* Ni error ni éxito: un consejo (la cámara en el celular, apoyar la tablet).
+     Usa el ámbar que ya está en la paleta, no un color nuevo. */
+  #estado.aviso{color:var(--alerta)}
   /* Retos y marcador viven juntos en una columna a la derecha, apilados con
      flex. Antes el panel de retos flotaba arriba-centro, pero ahí va ahora el
      estante; y apilándolos con flex el marcador no puede montársele encima
@@ -128,6 +162,13 @@
 </style>
 </head>
 <body>
+<div id="girar">
+  <div>
+    <div class="icono">📱↻</div>
+    <h2>Gira el dispositivo</h2>
+    <p>El laboratorio necesita la pantalla en horizontal.</p>
+  </div>
+</div>
 <div id="app">
   <div id="escena">
     <video id="video" playsinline autoplay muted></video>
@@ -161,7 +202,7 @@
     <div id="info">
       <h2>Elemento</h2>
       <div class="vacio" id="infoCuerpo">
-        Arrastra un elemento de la columna izquierda hasta el vaso de agua.<br><br>
+        Arrastra un elemento del estante de arriba hasta el vaso de agua.<br><br>
         Empieza por el <b>Sodio</b>. Después prueba el <b>Cesio</b>… y luego un gas noble, a ver qué pasa.
       </div>
     </div>
@@ -387,6 +428,67 @@
      la vista en perfLab(true), pero no se usa en el juego: el grosor del
      esqueleto ya escala con el tamaño aparente de la mano y da el mismo
      resultado sin un segundo camino de datos que mantener.
+
+   ── SÉPTIMA RONDA: MÓVIL Y TABLET ───────────────────────────────
+   Tres fallos que estaban PUBLICADOS y que se cazaron midiendo, no leyendo.
+   Verificados sobre index_v7_respaldo.html, o sea sobre lo que hay online:
+
+   1. El estrechado del panel lateral no se aplicaba NUNCA. Las dos media
+      queries estaban ANTES de la regla base `#lateral{width:330px}` y, con la
+      misma especificidad, gana la última del archivo. Medido a 667x375: el
+      panel ocupaba 330 px de 667 y al laboratorio le quedaban 337. Con las
+      reglas en su sitio quedan 489: un 45% más de sitio para jugar.
+
+   2. Los botones 3 y 4 del selector se dibujaban FUERA de la pantalla.
+      A 667x375 caían en y=314 e y=408 con 375 px de alto: dos de las cuatro
+      estaciones eran inalcanzables. La causa era el mínimo de 84 px por
+      botón, pensado para una mano a un metro de la cámara, aplicado sin
+      comprobar si cabía. Ahora, cuando no caben en columna, pasan a una barra
+      abajo — que además es donde un chico ya las busca en un teléfono.
+
+   3. Faltaba `touchstart`. Solo había `touchmove`, así que tocar una ficha y
+      soltar sin mover no agarraba nada, y en un arrastre rápido se agarraba
+      la ficha que hubiera bajo el PRIMER MOVIMIENTO, no bajo el dedo al
+      posarse. Comprobado en la versión publicada: agarra = false.
+
+   Y uno que solo aparece con el dedo: tras tocar un botón de estación, el
+   primer toque sobre una ficha se perdía. actualizarAgarre() leía
+   `selector.sobre`, que lo escribe actualizarSelector() DESPUÉS en el mismo
+   frame, o sea la respuesta del frame anterior. Con ratón nunca se notó
+   porque el puntero recorre el camino intermedio y por el camino se limpia
+   solo; con el dedo no hay camino. Ahora se calcula con sobreSelector().
+
+   ── RENDIMIENTO: LO QUE SE MIDIÓ Y NO SE APLICÓ ─────────────────
+   Medido a 667x375 con los pools de partículas llenos (900 + 240), seis
+   pasadas alternando A/B de 400 frames cada una, mediana:
+
+      tope de dpr      frame 2D
+      ─────────────────────────
+      2 (actual)        0.837 ms
+      1.5               0.862 ms
+
+   Capar el dpr a 1.5 NO gana nada: la diferencia (0.025 ms) es cuatro veces
+   menor que el ruido de la propia medida (0.104 ms), y en algunas pasadas
+   sale al revés. Tiene sentido — el frame lo dominan los sprites cacheados,
+   que se pintan al mismo tamaño en CSS px, y el bucle por partícula, que no
+   depende de la resolución. Lo que crece con el dpr es el relleno de la GPU,
+   y eso no lo ve un cronómetro de CPU.
+
+   Queda como perilla (TOPE_DPR, arriba de disponer) porque en un Android de
+   gama baja el cuello SÍ puede ser la GPU y ahí 978x750 contra 734x563 son
+   un 45% menos de píxeles. Bajarlo es cambiar un número; hacerlo sin poder
+   medirlo sería adivinar.
+
+   Tampoco se recortaron las partículas: el frame completo con los pools
+   llenos son 0.92 ms de 16.7. No son el cuello de botella ni siendo diez
+   veces más pesado el aparato, y reacciones más pobres se ven.
+
+   Lo único que sí se recorta en pantalla corta es la mascota 3D, y no por
+   rendimiento sino porque no hay franja por la que pasear. De regalo,
+   animarCarbonito + pintarMundo bajan de 0.087 a 0.016 ms — y eso es solo la
+   parte de CPU: el trabajo de GPU que se ahorra (una malla con esqueleto más
+   su sombra) no lo mide este cronómetro y es justo lo que más pesa en el
+   aparato más flojo.
    ═══════════════════════════════════════════════════════════════ */
 const cv = document.getElementById('juego');
 const cx = cv.getContext('2d');
@@ -407,6 +509,53 @@ const FERIA = new URLSearchParams(location.search).get('feria') === '1';
 /* En feria el medidor se ignora: nadie debe poder dejar la consola escupiendo
    métricas en mitad de una demostración. */
 window.perfLab = v => (DEBUG_PERF = FERIA ? false : (v !== false));
+
+/* -- 0.b QUÉ APARATO ES ESTO ------------------------------------
+   Hace falta por una razón concreta: en un TELÉFONO SOSTENIDO EN LA MANO la
+   cámara no sirve. Una mano sujeta el aparato, el encuadre sale pésimo y el
+   seguimiento de gestos es inútil. Ofrecer el botón igual que en un portátil
+   hace que el chico pida permiso de cámara para descubrir solo que no
+   funciona, y eso es peor que no ofrecerlo.
+
+   Se decide por CAPACIDADES, nunca por User Agent: las cadenas mienten (todo
+   navegador de escritorio dice "Mozilla") y envejecen mal — cualquier tabla
+   de modelos estaría desfasada antes de la próxima feria.
+
+     pointer:coarse   el puntero principal es gordo (un dedo), no un ratón.
+     maxTouchPoints   hay pantalla táctil de verdad.
+     lado corto       en CSS px. Un teléfono apaisado ronda 375; una tablet
+                      apaisada, 768. El corte en 500 cae en tierra de nadie,
+                      lejos de los dos.
+
+   Se piden las DOS señales táctiles porque un portátil táctil (cada vez más
+   comunes en aulas) da maxTouchPoints > 0 pero pointer:coarse falso: ahí
+   manda el trackpad y la cámara funciona perfectamente.
+
+   ?aparato=telefono|tablet|pc fuerza el resultado, para poder probar los tres
+   sin tenerlos delante. */
+const APARATO_FORZADO = new URLSearchParams(location.search).get('aparato');
+let _aparato = null;
+function tipoDeAparato(){
+  if (_aparato) return _aparato;
+  if (APARATO_FORZADO === 'telefono' || APARATO_FORZADO === 'tablet' || APARATO_FORZADO === 'pc'){
+    _aparato = APARATO_FORZADO;
+    console.log('[lab] aparato forzado por la URL:', _aparato);
+    return _aparato;
+  }
+  const grueso = window.matchMedia && window.matchMedia('(pointer:coarse)').matches;
+  const dedos  = (navigator.maxTouchPoints || 0) > 0;
+  /* El lado corto y no el alto: el juego solo se juega en horizontal, pero
+     esto puede evaluarse mientras el aparato está en vertical (la pantalla de
+     "gira el dispositivo"), y el lado corto es el mismo en las dos posturas. */
+  const corto = Math.min(window.innerWidth, window.innerHeight);
+  _aparato = (grueso && dedos) ? (corto < 500 ? 'telefono' : 'tablet') : 'pc';
+  console.log('[lab] aparato:', _aparato,
+    '(pointer:coarse '+grueso+' · maxTouchPoints '+(navigator.maxTouchPoints||0)+
+    ' · lado corto '+corto+' px)');
+  return _aparato;
+}
+/* Táctil = teléfono o tablet. Lo preguntan el dpr y las partículas. */
+const esTactil = () => tipoDeAparato() !== 'pc';
 const perf = { mano:0, dibujo:0, manos:0, carbo:0, n:0, corte:0, frames:0, fps:0 };
 function medirFrame(t){
   perf.frames++;
@@ -432,7 +581,9 @@ function medirFrame(t){
 function avisar(msg, tipo){
   const e = $('estado');
   e.textContent = msg; e.className = tipo || '';
-  if (tipo === 'err') console.error('[lab]', msg); else console.log('[lab]', msg);
+  if (tipo === 'err') console.error('[lab]', msg);
+  else if (tipo === 'aviso') console.warn('[lab]', msg);
+  else console.log('[lab]', msg);
 }
 
 /* ── 1. PUNTERO UNIFICADO ───────────────────────────────────────
@@ -523,9 +674,12 @@ const nuevaParticula = ()=> nPart<MAX_PART ? particulas[nPart++] : null;
 const nuevoDestello  = ()=> nDest<MAX_DEST ? destellos[nDest++]  : null;
 
 /* ── 2. DISPOSICIÓN: columna a la izquierda, vaso abajo-izquierda ── */
+/* Tope del devicePixelRatio. Es una perilla y no un número suelto para poder
+   medir las dos opciones sin recompilar nada — ver la nota de mediciones. */
+let TOPE_DPR = 2;
 function disponer(){
   const r = cv.getBoundingClientRect();
-  const dpr = Math.min(window.devicePixelRatio||1, 2);
+  const dpr = Math.min(window.devicePixelRatio||1, TOPE_DPR);
   S.W = r.width; S.H = r.height; S.dpr = dpr;
   cv.width = Math.round(r.width*dpr);
   cv.height = Math.round(r.height*dpr);
@@ -561,7 +715,11 @@ function disponer(){
      techo del encuadre, y ahí arriba el brazo ya va estirado. Bajarlo cuesta
      alto de estación, así que es un término medio: lo justo para que la fila
      no se lea como pegada al filo. */
-  const arriba  = ESTANTE_ARRIBA;
+  /* En una pantalla corta (un teléfono apaisado son 375 px de alto) esos 34 px
+     son casi un 10% de todo el alto, y se los quita a la estación, que es
+     donde se juega. Se escala: el criterio de "no pegado al filo" es
+     proporcional, no absoluto. En escritorio no cambia nada. */
+  const arriba  = Math.max(14, Math.min(ESTANTE_ARRIBA, S.H*0.06));
   S.fichas = ELEMENTOS.map((el,i)=>{
     const fila = Math.floor(i/porFila), col = i % porFila;
     const enEsta = Math.min(porFila, n - fila*porFila);
@@ -595,27 +753,71 @@ function disponer(){
      estación en medio y la columna de retos a la derecha, donde antes estaba
      el estante. Y por debajo de todo, la franja de Carbonito. */
   const bajoEstante = S.estanteEtiqueta + 10;
-  const anchoDcha = Math.max(170, Math.min(300, S.W*0.26));
+  /* 170 px de mínimo eran el 35% de un teléfono apaisado. El reto tiene que
+     caber, pero no a costa de dejar la estación sin sitio. */
+  const anchoDcha = Math.max(132, Math.min(300, S.W*0.26));
   const pd = $('panelDerecha');
   pd.style.top = bajoEstante+'px';
   pd.style.width = anchoDcha+'px';
 
-  const selW = Math.max(104, Math.min(152, S.W*0.10));
   const hueco = 10;
   const bandaCarbo = Math.round(S.H*BANDA_CARBONITO);
   const abajoUtil = S.H - bandaCarbo - 10;
-  const altoBoton = Math.max(84, Math.min(134, (abajoUtil - bajoEstante - hueco*3)/4));
-  selector.botones = ESTACIONES.map((e,i)=>({
-    id:e.id, nombre:e.nombre, icono:e.icono,
-    x:16, y:bajoEstante + i*(altoBoton+hueco), w:selW, h:altoBoton
-  }));
 
-  const zx = 16 + selW + 18;
+  /* ── ¿SELECTOR EN COLUMNA O EN BARRA? ──────────────────────────
+     Los botones son enormes a propósito: están pensados para una mano
+     temblando a un metro de la cámara. Pero cuatro de esos en columna piden
+     unos 400 px de alto, y un teléfono apaisado tiene 375 EN TOTAL.
+
+     Esto no se comprobaba, y el resultado medido a 667x375 era que los
+     botones 3 y 4 se dibujaban en y=331 y y=425: fuera de la pantalla. Dos
+     de las cuatro estaciones eran sencillamente inalcanzables.
+
+     Cuando no caben en columna se pasan a una barra abajo, que además es el
+     sitio donde un chico ya espera encontrarlas en un teléfono. El dibujo no
+     cambia: dibujarSelector() solo lee x/y/w/h de cada botón.
+
+     El corte no pregunta qué aparato es, sino si el espacio da: una ventana
+     de escritorio achatada tiene el mismo problema y merece el mismo arreglo. */
+  const ALTO_MIN_BOTON = 46;    // blanco mínimo cómodo para un dedo
+  const sitioColumna = (abajoUtil - bajoEstante - hueco*3)/4;
+  const enBarra = sitioColumna < ALTO_MIN_BOTON;
+  selector.barra = enBarra;
+
   const Z = S.zona || (S.zona = {});
-  Z.x = zx;
-  Z.w = Math.max(200, S.W - anchoDcha - 26 - zx);
   Z.y = bajoEstante;
-  Z.h = Math.max(150, abajoUtil - Z.y);
+
+  if (!enBarra){
+    const selW = Math.max(104, Math.min(152, S.W*0.10));
+    const altoBoton = Math.min(134, sitioColumna);
+    selector.botones = ESTACIONES.map((e,i)=>({
+      id:e.id, nombre:e.nombre, icono:e.icono,
+      x:16, y:bajoEstante + i*(altoBoton+hueco), w:selW, h:altoBoton
+    }));
+    Z.x = 16 + selW + 18;
+    Z.h = Math.max(150, abajoUtil - Z.y);
+  } else {
+    const altoBarra = Math.max(40, Math.min(58, S.H*0.15));
+    const yBarra = S.H - altoBarra - 8;
+    const margen = 12, sep = 8;
+    const anchoB = (S.W - margen*2 - sep*(ESTACIONES.length-1))/ESTACIONES.length;
+    selector.botones = ESTACIONES.map((e,i)=>({
+      id:e.id, nombre:e.nombre, icono:e.icono,
+      x: margen + i*(anchoB+sep), y: yBarra, w: anchoB, h: altoBarra
+    }));
+    Z.x = 16;
+    Z.h = Math.max(90, yBarra - 8 - Z.y);
+  }
+  Z.w = Math.max(180, S.W - anchoDcha - 26 - Z.x);
+
+  /* Con la barra abajo no queda franja para que Carbonito pasee, y el chip de
+     modo vive justo donde va la barra. En una pantalla de 375 px no es que se
+     vean apretados: es que no hay sitio. Se quitan los dos — y de paso el
+     aparato más flojo se ahorra el modelo 3D, que es donde más duele. */
+  S.sinMascota = enBarra;
+  $('modo').style.display = enBarra ? 'none' : '';
+  // la visibilidad se aplica en animarCarbonito: el modelo se carga solo, y
+  // aquí todavía puede no existir.
 
   /* Cada estación se calcula DENTRO de ese rectángulo, así que todas crecen
      solas cuando hay más sitio. Las cuatro se recalculan aunque solo se vea
@@ -666,6 +868,28 @@ function activarEstacion(id, porElReto){
   if (!porElReto) S.ultimaAccion = Date.now();
 }
 
+/* ¿El puntero está AHORA sobre un botón del selector?
+
+   Se calcula en vez de leer `selector.sobre`, y la diferencia importa: ese
+   valor lo escribe actualizarSelector(), que en el frame corre DESPUÉS de
+   actualizarAgarre(), así que al decidir un agarre se estaría mirando la
+   respuesta del frame ANTERIOR.
+
+   Con ratón nunca se notó: el puntero recorre el camino entre el botón y la
+   ficha, y por el camino `sobre` vuelve a -1 solo. Con el dedo no hay camino
+   —se levanta aquí y se posa allá— así que `sobre` seguía apuntando al botón
+   de estación que se acababa de tocar y el primer toque sobre una ficha se
+   perdía entero. Medido: tocar "Enlaces" y luego el sodio no agarraba nada. */
+function sobreSelector(){
+  if (!puntero.visto) return false;
+  const B = selector.botones;
+  for (let i=0;i<B.length;i++){
+    const b = B[i];
+    if (puntero.x>b.x && puntero.x<b.x+b.w && puntero.y>b.y && puntero.y<b.y+b.h) return true;
+  }
+  return false;
+}
+
 /* Permanencia (dwell) y clic, los dos escribiendo en el mismo sitio. */
 function actualizarSelector(dt){
   const B = selector.botones;
@@ -680,30 +904,79 @@ function actualizarSelector(dt){
   selector.activoPrev = puntero.activo;
   if (sobre !== selector.sobre){ selector.sobre = sobre; selector.dwell = 0; }
   if (sobre < 0) return;
-  // con ratón no hace falta esperar: el clic sí es fiable
-  if (clicNuevo && puntero.fuente === 'raton'){ activarEstacion(B[sobre].id); return; }
+  /* La permanencia es SOLO para la mano. Existe porque con la cámara un
+     "clic" (levantar el índice) es poco fiable: se dispara solo y se pierde
+     cuando no toca. Con ratón o con dedo el clic es exacto, y esperar 0,6 s
+     con el dedo encima del botón se siente roto — pero peor todavía era el
+     revés: con el ratón, pasar por encima de camino a otro sitio cambiaba de
+     estación sin que nadie hubiera pulsado nada. */
+  if (puntero.fuente !== 'mano'){
+    if (clicNuevo) activarEstacion(B[sobre].id);
+    return;
+  }
   selector.dwell += dt;
   if (selector.dwell >= DWELL_MS) activarEstacion(B[sobre].id);
 }
 
-/* ── 3. ENTRADA: RATÓN ─────────────────────────────────────────── */
+/* ── 3. ENTRADA: RATÓN Y DEDO ──────────────────────────────────
+   Los dos escriben en el mismo `puntero`. La cámara manda sobre los dos: si
+   `fuente` es 'mano', ni el ratón ni el dedo tocan nada, porque durante el
+   modo cámara un roce accidental en la pantalla mandaría el puntero al otro
+   extremo en mitad de un arrastre.                                        */
 function pos(ev){ const r=cv.getBoundingClientRect(); return {x:ev.clientX-r.left,y:ev.clientY-r.top}; }
+
+/* Tras un toque, el navegador emite mousemove/mousedown/mouseup "de
+   compatibilidad" con unos 300 ms de retraso. El preventDefault de touchstart
+   los suprime en casi todos, pero no en todos (iOS ha ido cambiando de
+   opinión), y un mousemove colado devolvería `fuente` a 'raton'. Ignorar el
+   ratón un rato después de un toque cuesta dos líneas y cierra el agujero. */
+let ultimoTacto = 0;
+const ratonFantasma = () => Date.now() - ultimoTacto < 700;
+
 cv.addEventListener('mousemove', ev=>{
-  if (puntero.fuente!=='raton') return;
+  if (puntero.fuente==='mano' || ratonFantasma()) return;
+  puntero.fuente='raton';
   const p=pos(ev); puntero.x=p.x; puntero.y=p.y; puntero.visto=true; S.ultimoMov=Date.now();
 });
 cv.addEventListener('mousedown', ev=>{
-  if (puntero.fuente!=='raton') return;
+  if (puntero.fuente==='mano' || ratonFantasma()) return;
+  puntero.fuente='raton';
   const p=pos(ev); puntero.x=p.x; puntero.y=p.y; puntero.activo=true; S.ultimoMov=Date.now();
 });
 window.addEventListener('mouseup', ()=>{ if(puntero.fuente==='raton') puntero.activo=false; });
-cv.addEventListener('touchmove', ev=>{
-  const t=ev.touches[0]; if(!t) return;
-  const r=cv.getBoundingClientRect();
-  puntero.x=t.clientX-r.left; puntero.y=t.clientY-r.top;
-  puntero.activo=true; puntero.visto=true; S.ultimoMov=Date.now(); ev.preventDefault();
+
+/* touchstart FALTABA, y era el bug de fondo del modo táctil: solo había
+   touchmove, así que tocar una ficha y arrastrar sin mover el primer píxel no
+   agarraba nada. Peor todavía, el agarre se decidía en la posición del PRIMER
+   MOVIMIENTO y no en la del dedo al posarse, así que en un arrastre rápido la
+   ficha que agarrabas no era la que habías tocado.                        */
+function delDedo(ev){
+  const t = ev.touches[0] || ev.changedTouches[0]; if (!t) return false;
+  const r = cv.getBoundingClientRect();
+  puntero.x = t.clientX-r.left; puntero.y = t.clientY-r.top;
+  puntero.visto = true; S.ultimoMov = Date.now(); ultimoTacto = Date.now();
+  return true;
+}
+cv.addEventListener('touchstart', ev=>{
+  if (puntero.fuente==='mano') return;
+  puntero.fuente='dedo';
+  if (delDedo(ev)) puntero.activo = true;
+  ev.preventDefault();
 },{passive:false});
-window.addEventListener('touchend', ()=>{ puntero.activo=false; });
+cv.addEventListener('touchmove', ev=>{
+  if (puntero.fuente==='mano') return;
+  puntero.fuente='dedo';
+  if (delDedo(ev)) puntero.activo = true;
+  ev.preventDefault();
+},{passive:false});
+/* touchcancel además de touchend: si entra una llamada o el navegador se
+   queda el gesto, sin esto la ficha se queda pegada al puntero para siempre. */
+function soltarDedo(){
+  if (puntero.fuente!=='dedo') return;
+  puntero.activo = false; ultimoTacto = Date.now();
+}
+window.addEventListener('touchend', soltarDedo);
+window.addEventListener('touchcancel', soltarDedo);
 
 /* ── 4. AGARRE ─────────────────────────────────────────────────── */
 let activoPrevio = false;
@@ -713,7 +986,7 @@ function actualizarAgarre(){
   activoPrevio  = puntero.activo;
 
   // encima del selector no se agarra nada: ahí se elige estación
-  if (empieza && !S.agarrada && selector.sobre < 0){
+  if (empieza && !S.agarrada && !sobreSelector()){
     let mejor=null, dmin=1e9;
     for (const f of S.fichas){
       if (f.npc) continue;                    // esa la lleva Carbonito
@@ -1314,13 +1587,18 @@ function spriteBoton(b, activa){
   g.lineWidth = activa ? 2.5 : 1.4;
   g.strokeStyle = activa ? '#4da3ff' : 'rgba(60,80,130,.75)';
   cajaEn(g, 1, 1, b.w-2, b.h-2, 14); g.stroke();
+  /* Las proporciones de un botón alto dejan el emoji diminuto cuando el botón
+     es ancho y bajo (la barra del pie en pantallas cortas): 0.34 de 46 px son
+     15 px de icono. En barra se reparte al revés — el icono manda y el nombre
+     va debajo, más pequeño pero con más peso relativo. */
+  const barra = b.w > b.h * 1.4;
   g.textAlign='center'; g.textBaseline='middle';
-  g.font = Math.round(b.h*0.34)+'px system-ui';
+  g.font = Math.round(b.h*(barra ? 0.42 : 0.34))+'px system-ui';
   g.fillStyle = activa ? '#eaf2ff' : 'rgba(220,232,255,.72)';
-  g.fillText(b.icono, b.w/2, b.h*0.38);
-  g.font = '600 '+Math.max(11, Math.round(b.h*0.135))+'px system-ui';
+  g.fillText(b.icono, b.w/2, b.h*(barra ? 0.38 : 0.38));
+  g.font = '600 '+Math.max(10, Math.round(b.h*(barra ? 0.24 : 0.135)))+'px system-ui';
   g.fillStyle = activa ? '#eaf2ff' : 'rgba(190,208,240,.80)';
-  g.fillText(b.nombre, b.w/2, b.h*0.76);
+  g.fillText(b.nombre, b.w/2, b.h*(barra ? 0.79 : 0.76));
   cacheBotones.set(clave, s);
   return s;
 }
@@ -2177,7 +2455,7 @@ function fisica(){
 
 /* ── 9. CARBONITO: camina por el fondo, alrededor del usuario ──── */
 const PISTAS = [
-  '¡Hola! Soy <b>Carbonito</b>. Arrastra un átomo de la columna hasta el vaso.',
+  '¡Hola! Soy <b>Carbonito</b>. Arrastra un átomo del estante hasta el vaso.',
   'Prueba el <b>Sodio</b> primero. Es el clásico de los videos de química.',
   'Ahora el <b>Cesio</b>. Al bajar en el grupo 1 la cosa se pone seria.',
   '¿Y si tiras un <b>gas noble</b>? Fíjate bien en lo que NO pasa.',
@@ -2606,6 +2884,20 @@ function caminarConHuesos(fase, intensidad){
 let tPrev = 0;
 function animarCarbonito(tms){
   if (!carboOK || !carboMalla) return;
+  /* Sin franja donde pasear (pantalla corta: el selector ocupa el pie) la
+     mascota no se dibuja. No es solo estética: en el aparato más flojo, que
+     es justo donde pasa esto, se ahorra el modelo entero. */
+  if (S.sinMascota){
+    if (carboMalla.visible){
+      carboMalla.visible = false;
+      if (carboSombra) carboSombra.visible = false;
+    }
+    tPrev = tms; return;
+  }
+  if (!carboMalla.visible){
+    carboMalla.visible = true;
+    if (carboSombra) carboSombra.visible = true;
+  }
   const dt = Math.min(50, tms - tPrev); tPrev = tms;
 
   if (carbo.pausa > 0) carbo.pausa -= dt;
@@ -2827,10 +3119,58 @@ async function encenderCamara(){
     apagarCamara(); $('btnCam').disabled=false;
   }
 }
+/* ¿Se le pide permiso de cámara a este aparato, y con qué advertencia?
+
+   La regla es AVISAR, NO BLOQUEAR. En un teléfono la cámara no va a funcionar
+   bien, pero el que quiera probarlo tiene derecho a hacerlo — y en una feria
+   siempre hay alguien que apoya el celular contra un vaso y lo consigue.
+   Bloquearlo sería decidir por él; ofrecerlo sin avisar sería dejar que
+   descubra solo, después de dar permiso de cámara, que no sirve.
+
+   Devuelve false cuando todavía NO hay que pedir permiso. */
+let insistioCam = false;
+function avisoDeCamara(){
+  const a = tipoDeAparato();
+  if (a === 'telefono' && !insistioCam){
+    insistioCam = true;
+    $('btnCam').textContent = 'Activar igual';
+    avisar('En el celular la cámara no funciona bien: una mano sujeta el aparato '+
+           'y el encuadre no da. Juega con el dedo. Si quieres probar igual, vuelve a pulsar.','aviso');
+    hablar('La cámara está pensada para una <b>tablet o una laptop apoyada</b>. '+
+           'En el celular usa el dedo: arrastra los átomos con él.', 9000);
+    return false;
+  }
+  if (a === 'tablet'){
+    avisar('Apoya la tablet en la mesa o en un soporte antes de empezar: si la '+
+           'sostienes con una mano, a la otra no le queda encuadre.','aviso');
+  }
+  return true;
+}
+
 $('btnCam').addEventListener('click', ()=>{
   if (camActiva){ apagarCamara(); return; }
+  if (!avisoDeCamara()) return;
   encenderCamara();
 });
+
+/* Cómo se llama el modo cuando NO hay cámara. En un aparato táctil decir
+   "Modo ratón" es mentira y encima confunde: no hay ratón por ninguna parte. */
+const etiquetaModoBase = () => esTactil() ? 'Modo dedo' : 'Modo ratón';
+
+/* En el teléfono el botón de cámara deja de ser el principal: sigue ahí, pero
+   con el aspecto secundario de "Vaciar mesa" o "Captura", porque la mecánica
+   principal en ese aparato es el dedo. */
+(function ajustarPieAlAparato(){
+  const a = tipoDeAparato();
+  if (a === 'pc') return;
+  $('modoTxt').textContent = etiquetaModoBase();
+  if (a === 'telefono'){
+    $('btnCam').className = 'sec';
+    avisar('Arrastra los átomos con el dedo. La cámara es para tablet o laptop.');
+  } else {
+    avisar('Arrastra con el dedo, o apoya la tablet y activa la cámara.');
+  }
+})();
 function apagarCamara(){
   const v=$('video');
   if (v.srcObject){ v.srcObject.getTracks().forEach(t=>t.stop()); v.srcObject=null; }
@@ -2844,7 +3184,7 @@ function apagarCamara(){
   manoMando=-1; ultimoT=-1;
   pinza.perdidos=99; pinza.cerrada=false; pinza.recuperando=false; pinza.saltar=true;
   pinza.tPrev=0; oeX.listo=false; oeY.listo=false;
-  $('modoTxt').textContent='Modo ratón'; $('puntoModo').style.background='#4da3ff';
+  $('modoTxt').textContent=etiquetaModoBase(); $('puntoModo').style.background='#4da3ff';
   $('btnCam').textContent='Activar cámara';
 }
 
